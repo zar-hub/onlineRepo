@@ -1,4 +1,4 @@
-# Frequency (GHz),Peak (mV),Noise (mV),SigPeak (mV),SigNoise (mV)
+Frequency (GHz),Peak (mV),Noise (mV),SigPeak (mV),SigNoise (mV)
 2.50000e-01,1.52895e-01,3.02500e-02,1.64468e-02,7.68765e-04
 3.08081e-01,5.01257e-02,2.25333e-02,1.31167e-02,5.00666e-04
 3.66162e-01,7.33833e-02,1.75667e-02,9.77206e-03,7.42069e-04

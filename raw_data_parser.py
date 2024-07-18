@@ -37,7 +37,7 @@ from os import listdir, getcwd
 from os.path import isfile, join
 
 sample_types = ['CAL', 'AIR', 'PCR', 'SIL', 'SILHALF', 'SILFULL', 'BOX']
-antenna_types = ['HF', 'LF', 'CAB']
+antenna_types = ['HF', 'LF', 'CAB', '5.8']
 
 def getType( filename : str , from_types : list):
     for this_type in from_types:

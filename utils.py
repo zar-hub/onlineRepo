@@ -54,5 +54,28 @@ def plotByID(subset : pd.DataFrame, title : str):
         ax.set_ylabel('Power (mV)')
         ax.legend()
 
+def correctGain(subset : pd.DataFrame, coeff : np.ndarray):
+    '''
+        Scales every relevant field by the polinomial specyfied by the 
+        coeff
+    '''
+    outset = subset.copy()
+    for f in ['peak_mV', 'sigma_peak_mV', 'noise_mV', 'sigma_noise_mV']:
+        if f not in outset.columns:
+            continue
+        outset.loc[:, f] = subset.loc[:, f] / np.polyval(coeff, subset.loc[:, 'frequency_GHz'])
+    return outset
+
+def denoise(x : pd.Series):
+    '''
+        Removes the noise from the peak for each row of the dataset.
+        DROPS NOISE AND SIGNOISE COLUMNS
+    '''
+    x['peak_mV'] = x['peak_mV'] - x['noise_mV']
+    x['sigma_peak_mV'] = np.sqrt(np.sum(np.square(x[['sigma_peak_mV', 'sigma_noise_mV']])))
+    x = x.drop(['noise_mV','sigma_noise_mV'])
+    return x
+
+
 if __name__ == 'main':
     pass

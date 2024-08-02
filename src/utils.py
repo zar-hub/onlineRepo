@@ -43,7 +43,7 @@ def plotByID(subset : pd.DataFrame, title : str):
         '''
         fig, ax = plt.subplots()
         
-        subset.groupby(subset['id']).apply(plotThis, ax, include_groups=False)
+        subset.groupby(subset['id']).apply(plotThis, ax)
 
         # set y scale to logarithmic
         # ax.set_yscale('log')

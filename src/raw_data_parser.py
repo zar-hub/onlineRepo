@@ -24,7 +24,7 @@
                                         CAL: calibration, the reciever is
                                         directly connected with the antenna
         - antenna       string          can be HF, LF, CAB
-                                        both lowFreq and highFreq are homemade
+                                        both lowFreq and highFreq are homemade  
 
     Notes:
         - span is omitted for simplicity
@@ -38,6 +38,8 @@ from os.path import isfile, join
 
 sample_types = ['CAL', 'AIR', 'PCR', 'SIL', 'SILHALF', 'SILFULL', 'BOX']
 antenna_types = ['HF', 'LF', 'CAB', '5.8']
+run_types = [ 'R' + str(i) for i in range(20, -1, -1)] # Counting backwords is a hack for gettype
+
 
 def getType( filename : str , from_types : list):
     for this_type in from_types:
@@ -46,7 +48,7 @@ def getType( filename : str , from_types : list):
     raise OSError(f'{filename} does not have a match... aborting')
 
 prj_dir = getcwd()
-rel_path = 'onlineRepo/rawdata'
+rel_path = 'rawdata'
 
 # 30-05-24
 date = '30-05-24'
@@ -57,11 +59,12 @@ print(f'files for {date}: {files}')
 
 for i, f in enumerate(files):
     df = pd.read_csv( join(rel_path, date, f) )
-    id = date + '_R' + str(i)
     sample = getType(f, sample_types)
     antenna = getType(f, antenna_types)
+    run = getType(f, run_types)
     
     # compile fields
+    id = date + '_' + run
     df['id'] = id
     df['sample'] = sample
     df['sigma_peak_mV'] = None
@@ -78,7 +81,7 @@ for i, f in enumerate(files):
     df = df[columns]
 
     name = id + '.txt'
-    df.to_csv(  join(prj_dir, 'onlineRepo', 'labeldata', name),
+    df.to_csv(  join(prj_dir, 'labeldata', name),
                 encoding='utf8', 
                 index=False)
 
@@ -91,11 +94,12 @@ print(f'files for {date}: {files}')
 
 for i, f in enumerate(files):
     df = pd.read_csv( join(rel_path, date, f) )
-    id = date + '_R' + str(i)
     sample = getType(f, sample_types)
     antenna = getType(f, antenna_types)
+    run = getType(f, run_types)
     
     # compile fields
+    id = date + '_' + run
     df['id'] = id
     df['sample'] = sample
     df['antenna'] = antenna
@@ -113,7 +117,7 @@ for i, f in enumerate(files):
     df = df[columns]
 
     name = id + '.txt'
-    df.to_csv(  join(prj_dir, 'onlineRepo', 'labeldata', name),
+    df.to_csv(  join(prj_dir, 'labeldata', name),
                 encoding='utf8', 
                 index=False)
 

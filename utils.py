@@ -14,7 +14,7 @@ def genLabel(df):
         '''
             Generates the label for calibration_effects
         '''
-        return ' '.join([str(df['sample'][0]),  str(df['antenna'][0])] )
+        return ' '.join([str(df['id'][0]), str(df['sample'][0]),  str(df['antenna'][0])] )
 
 
 def plotThis(subset : pd.DataFrame, ax):
@@ -36,7 +36,7 @@ def plotThis(subset : pd.DataFrame, ax):
                                 label = ' '.join([label_root , mylabel]))
                                                             
 
-def plotByID(subset : pd.DataFrame, title : str):
+def plotByID(subset : pd.DataFrame, title : str  = 'GraphTitle'):
         '''
                 Draws the entire dataframe grouping measurements by id.
                 The result is a graph with one line per measurement run.
@@ -51,7 +51,7 @@ def plotByID(subset : pd.DataFrame, title : str):
         fig.suptitle(title)
         ax.grid(True)
         ax.set_xlabel('Frequency (GHz)')
-        ax.set_ylabel('Power (mV)')
+        ax.set_ylabel('Tension (mV)')
         ax.legend()
 
 def correctGain(subset : pd.DataFrame, coeff : np.ndarray):
@@ -76,6 +76,21 @@ def denoise(x : pd.Series):
     x = x.drop(['noise_mV','sigma_noise_mV'])
     return x
 
+def FFTFilter(fft_signal: np.ndarray, percAmp: float, highPass: int):
+    ''' 
+        Removes every frequency below percAmp * MaxAmplitude
+        and the frequencies that are highPass away from the mean 
+        point of the fft
+    '''
+    # remove a part of the signal
+    fft_signal = [ i if abs(i) > np.abs(fft_signal).max() * percAmp  else 0 for i in fft_signal]
+    
+    # high pass filter
+    mid = int(len(fft_signal) / 2)
+    highPass = int(highPass) # assure is int
+    for i in range(mid - highPass , mid + highPass): 
+        fft_signal[i] = 0
+    return fft_signal
 
 if __name__ == 'main':
     pass

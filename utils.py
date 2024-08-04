@@ -25,6 +25,19 @@ def genLabel(df):
 def getValidKwargs(mykwargs, mylist):
     return {k: v for k, v in mykwargs.items() if k in mylist}
 
+def formatPlot(axs : list):
+    
+    try:
+        for ax in axs:
+            ax.set(xlabel='Frequency (GHz)',
+                    ylabel = 'Tension (mV)')
+            ax.legend(fontsize = 'small')
+    except:
+        axs.set(xlabel='Frequency (GHz)',
+                ylabel = 'Tension (mV)')
+        axs.legend(fontsize = 'small')
+
+
 def plotThis(subset : pd.DataFrame, ax, **kwargs):
     ''' 
     Plots relevant columns of the dataset on the given ax.
@@ -117,6 +130,17 @@ def denoise(x : pd.Series):
 def denoisePipe(df : pd.DataFrame):
     return df.apply(denoise, axis=1)
 
+def getResampledFreq(df : pd.DataFrame, by = 'id'):
+    '''
+    Gets the array of frequencies that all the groups have. 
+    This is useful when trying to fit a model and one wants 
+    to reduce all the grouping to a single group with this 
+    specific frequency array common to all groups.
+    '''
+    grouped = df.groupby(by)
+    first_key = list(grouped.groups.keys())[0]  # Get the first key
+    return grouped.get_group(first_key)[k.freq]
+
 def resampleGroup(group : {pd.DataFrame, dict}, newlen : int,  columns : list = []):
     '''
     Resamples dataframes or dicts with the desired shape. 
@@ -141,7 +165,7 @@ def resampleGroup(group : {pd.DataFrame, dict}, newlen : int,  columns : list = 
             if c not in group.columns:
                 continue
             # resample every relevant column
-            newgroup[c] = sp.signal.resample(group[c], newlen)
+            newgroup[c] = scipy.signal.resample(group[c], newlen)
         
         # also resample the frequencies
         newgroup[k.freq] = np.linspace( group[k.freq].min(),
@@ -160,18 +184,18 @@ def resampleGroup(group : {pd.DataFrame, dict}, newlen : int,  columns : list = 
         for key, arr in group.items(): 
             if len(arr) == newlen:
                 continue
-            group[key] = sp.signal.resample(arr, newlen)
+            group[key] = scipy.signal.resample(arr, newlen)
         return group
             
 
-def resamplePipe(df : pd.DataFrame):
+def resamplePipe(df : pd.DataFrame, by='id'):
     '''
         divides the dataframe into groups based on the id 
         and then resamples everything to the smallest id group.
         This is useful to merge all the signals.
     '''
     # get the groups divided by id 
-    grouped = df.groupby('id')
+    grouped = df.groupby(by)
 
     # get the minimun of the lenghts of the groups
     minlen = np.min([len(g.index) for name, g in grouped])

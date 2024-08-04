@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import scipy as sp
+import inspect
 
 # a container for keys
 class k:
@@ -11,29 +13,61 @@ class k:
     sig_nse = 'sigma_noise_mV'
 
 def genLabel(df): 
-        '''
-            Generates the label for calibration_effects
-        '''
-        return ' '.join([str(df['id'][0]), str(df['sample'][0]),  str(df['antenna'][0])] )
+    '''
+        Generates the label for calibration_effects
+    '''
+    # if the id is not present do not show it
+    try:
+        return ' '.join([str(df['id'].iloc[0]), str(df['sample'].iloc[0]),  str(df['antenna'].iloc[0])] )
+    except:
+        return ' '.join([str(df['sample'].iloc[0]),  str(df['antenna'].iloc[0])] )
+         
+def getValidKwargs(mykwargs, mylist):
+    return {k: v for k, v in mykwargs.items() if k in mylist}
 
-
-def plotThis(subset : pd.DataFrame, ax):
-        label_root = genLabel(subset)
-        for mylabel in ['peak_mV', 'noise_mV']:
-                
-                # handle non existing cols and nan values
-                if mylabel not in subset.columns:
-                        continue
-                if subset[mylabel].isnull().values.any():
-                        continue
-
-                # errors? errorbar, standard plot otherwise
-                if subset['sigma_' + mylabel].isnull().values.any():
-                        ax.plot(subset['frequency_GHz'], subset[mylabel], label = ' '.join([label_root , mylabel]))
-                else:
-                        ax.errorbar(subset['frequency_GHz'], subset[mylabel], 
+def plotThis(subset : pd.DataFrame, ax, **kwargs):
+    ''' 
+    Plots relevant columns of the dataset on the given ax.
+    Also passes to the ax eventual kwargs specified.
+    '''
+    label_root = genLabel(subset)
+    
+    # unpack all the kwargs in thei respective 
+    # dicts, you cannot use axArgs in plt.plot()
+    pltKeys = ['alpha']
+    axKeys = ['xlim', 'ylim', 'xlabel', 'ylabel']
+    pltArgs = getValidKwargs(kwargs, pltKeys)
+    axArgs = getValidKwargs(kwargs, axKeys)
+    
+    for mylabel in ['peak_mV', 'noise_mV']:
+            
+            # handle non existing cols and nan values
+            if mylabel not in subset.columns:
+                    continue
+            if subset[mylabel].isnull().values.any():
+                    continue
+           
+            # errors? errorbar, standard plot otherwise
+            if 'sigma_' + mylabel in subset.columns:  
+                if not subset['sigma_' + mylabel].isnull().values.any():
+                    ax.errorbar(subset['frequency_GHz'], subset[mylabel], 
                                 yerr = subset['sigma_' + mylabel],
-                                label = ' '.join([label_root , mylabel]))
+                                label = ' '.join([label_root , mylabel]),
+                                **pltArgs)
+                    # addidtional kwargs passed?
+                    # filter kwargs to pass only valid ones to ax.set
+                    ax.set(**axArgs)
+                    return
+                        
+            ax.plot(subset['frequency_GHz'], 
+                    subset[mylabel],
+                    label = ' '.join([label_root , mylabel]),
+                    **pltArgs)
+                   
+            
+            # addidtional kwargs passed?
+            # filter kwargs to pass only valid ones to ax.set
+            ax.set(**axArgs)
                                                             
 
 def plotByID(subset : pd.DataFrame, title : str  = 'GraphTitle'):
@@ -42,12 +76,8 @@ def plotByID(subset : pd.DataFrame, title : str  = 'GraphTitle'):
                 The result is a graph with one line per measurement run.
         '''
         fig, ax = plt.subplots()
-        
         subset.groupby(subset['id']).apply(plotThis, ax)
 
-        # set y scale to logarithmic
-        # ax.set_yscale('log')
-        
         fig.suptitle(title)
         ax.grid(True)
         ax.set_xlabel('Frequency (GHz)')
@@ -76,6 +106,78 @@ def denoise(x : pd.Series):
     x = x.drop(['noise_mV','sigma_noise_mV'])
     return x
 
+def denoisePipe(df : pd.DataFrame):
+    return df.apply(denoise, axis=1)
+
+def resampleGroup(group : {pd.DataFrame, dict}, newlen : int,  columns : list = []):
+    '''
+    Resamples dataframes or dicts with the desired shape. 
+    Columns is only necessary when using a dict.
+    Use >
+        passing a df you need to provide the columns that will be reshaped. Everything 
+        else is DROPPED to fit the new shape.
+    
+        passing a dict the dict is expected to contain an array for each key in it.
+        The values in the dict (expexted to be arrays) are analogous to the colums 
+        of the df.
+    
+    '''
+    if isinstance(group, pd.DataFrame):
+        if len(group.index) == newlen:
+            return group
+        # create a new dataframe with less colums,
+        # this copyes the head of the old dataframe
+        # and then updates the new values.
+        newgroup = group.head(newlen)
+        for c in columns:
+            if c not in group.columns:
+                continue
+            # resample every relevant column
+            newgroup[c] = sp.signal.resample(group[c], newlen)
+        
+        newgroup[k.freq] = np.linspace( group[k.freq].min(),
+                                        group[k.freq].max(),
+                                        newlen)
+        
+        if k.sig_pek in newgroup:
+            newgroup = newgroup.drop(k.sig_pek, axis=1)
+        
+        return newgroup
+    
+    if isinstance(group, dict):
+        # this dict is expected to contain the arrays 
+        # of the data, so group.values is a list of 
+        # arrays
+        for key, arr in group.items(): 
+            if len(arr) == newlen:
+                continue
+            group[key] = sp.signal.resample(arr, newlen)
+        return group
+            
+
+def resamplePipe(df : pd.DataFrame):
+    '''
+        divides the dataframe into groups based on the id 
+        and then resamples everything to the smallest id group.
+        This is useful to merge all the signals.
+    '''
+    # get the groups divided by id 
+    grouped = df.groupby('id')
+
+    # get the minimun of the lenghts of the groups
+    minlen = np.min([len(g.index) for name, g in grouped])
+    
+    # resample the appropriate columns
+    # to the minimun lenght
+    columns = [k.pek, k.nse]
+        
+    # this hack is necessary to assure the format of the data is correct,
+    # the apply function f*** up the id column... now it was a multiindex
+    # dropping the first level solves the problem.
+    resampledGrouped = grouped.apply(resampleGroup, minlen, columns)
+    resampledGrouped = resampledGrouped.droplevel(0)
+    
+    return  resampledGrouped
 def FFTFilter(fft_signal: np.ndarray, percAmp: float, highPass: int):
     ''' 
         Removes every frequency below percAmp * MaxAmplitude
@@ -91,6 +193,131 @@ def FFTFilter(fft_signal: np.ndarray, percAmp: float, highPass: int):
     for i in range(mid - highPass , mid + highPass): 
         fft_signal[i] = 0
     return fft_signal
+
+def FFTFilterPipe(data: pd.DataFrame, percAmp: float, highPass: int, plotFFT = False):
+    '''
+    This pipeline does the following things:
+        -   for each group of data filters the fft  high freq 
+            and all the frequencies below a certain amplitude.
+        -   plots all the important data to debug the processing
+            and a final graph to see the changes
+    '''
+    
+    # create a data structure to hold the processed signals
+    processed_signals = {}
+    
+    # for each group do the relative denoising and plotting
+    for name, group in data.groupby('id'):
+        
+        # try to remove large oscillations of the data
+        pc = np.polyfit(group[k.freq], group[k.pek], 3)
+        
+        # compute the fft on the difference between the polyfit and the data
+        signal = group[k.pek] - np.polyval(pc, group[k.freq])
+        fft_signal = np.fft.fft(signal)
+        
+        # filter the fft
+        filtered_fft_signal = FFTFilter(fft_signal, percAmp, highPass)
+        
+        # go back to the direct space of the signal
+        ifft = np.fft.ifft(filtered_fft_signal)
+        
+        # save it
+        processed_signals[name] = [group[k.freq].values, np.polyval(pc, group[k.freq]) + np.real(ifft)]
+        
+        # plot the data
+        if plotFFT:
+            fig, axs = plt.subplots(2,2, figsize=(15,10))
+            group.plot(x=k.freq, y=k.pek, yerr=k.sig_pek, label=name, alpha=.5, ax=axs[0,0])
+            # plot the polyfit
+            axs[0,0].plot(group[k.freq], np.polyval(pc, group[k.freq]), label='Approx', c='blue')
+            # plot the difference
+            axs[0,0].plot(group[k.freq], group[k.pek] - np.polyval(pc, group[k.freq]), 
+                    label='Shifts', c='red')
+            axs[0,1].plot(np.real(fft_signal), label='fft transform')
+            axs[0,1].plot(np.real(filtered_fft_signal), label='filtered fft transform')
+
+            # plot the main data and the denoised version
+            axs[1,0].plot(group[k.freq], signal,        label='signal')
+            axs[1,0].plot(group[k.freq], np.real(ifft), label='denoised signal')
+            axs[1,1].plot(group[k.freq], group[k.pek],  label='signal')
+            axs[1,1].plot(group[k.freq], np.polyval(pc, group[k.freq]) +  np.real(ifft), label='denoised signal')
+
+            axs[0,0].set(title='Raw signal, removed instrument noise',
+                        xlabel='Frequency GHz', ylabel='Voltage (mV)')
+            axs[0,1].set(title='FFT of the signal',
+                        xlabel='oneover frequency', ylabel='Partial amplitude')
+            axs[1,0].set(title='Filtered shifts',
+                        xlabel='Frequency GHz', ylabel='Voltage (mV)')
+            axs[1,1].set(title='Filtered signal (shifts + polyfit)',
+                        xlabel='Frequency GHz', ylabel='Voltage (mV)')
+    if plotFFT:
+        # make legends and title
+        for ax in axs.flatten():
+            ax.legend()
+        fig.suptitle(f'Filtering {name}', fontsize = 16)
+
+        axArgs = {
+            'ylim' : [0,5],
+            'xlabel' : 'Frequency (GHz)',
+            'ylabel' : 'Tension (mV)'
+        }
+        
+        # make a comparison between before and after
+        fig, axs = plt.subplots(1,2, figsize = (20,5))
+        fig.suptitle('Comparison between raw and filtered signals.')
+        axs = axs.flatten()
+        
+        for key, pair in processed_signals.items():
+            axs[1].plot(pair[0], pair[1], label=key)
+        axs[1].set(**axArgs)
+        
+        data.groupby('id').apply(plotThis, axs[0], **axArgs)
+        
+        for ax in axs:
+            ax.legend()
+            
+    # update the data in the dataframe
+    def updateDF(df, values):
+        
+        id = df['id'][0]
+        df[k.pek] = values[id][1]
+        return df
+    
+    data = data.groupby('id').apply(updateDF, processed_signals)     
+    # drop error column and additional index left over from groupby
+    return data.drop(k.sig_pek, axis=1).droplevel(0)
+
+# MODELS: each model should return a matrix with two rows, the first are the values and 
+# the second are thei uncertainties.
+
+def weightmean(df : pd.DataFrame, weights : {list, np.ndarray}):
+        ''' The error is calculated with the inferred std
+        and then by using variance propagation law. 
+        This function fits only the Peak column of the dataset'''
+     
+        # unpack data into an array
+        
+        groups = df.groupby('id').apply(lambda x : x[k.pek].values)
+        
+        x = groups.to_numpy()
+        y = (x * weights).sum(axis=0)
+
+        # estimate the error from the samples
+        xerr = np.std(x, axis=0, ddof=1)
+        yerr = np.sqrt(np.square(weights*np.column_stack([xerr] * len(weights))).sum(axis=1))
+ 
+        return y, yerr
+    
+def corrModelToData(dataset : pd.DataFrame, model : {tuple, list}):
+    '''
+    returns the last row of the correlation matrix between the model 
+    and the data, each element is the correlation between the model
+    and a specific run of the data.
+    '''
+    data = np.stack(dataset.groupby('id').apply(lambda x : (x[k.pek].values)))
+    data = np.append(data, [model[0]], axis=0)
+    return np.corrcoef(data)[-1, :]
 
 if __name__ == 'main':
     pass

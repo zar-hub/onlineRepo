@@ -35,20 +35,20 @@ def plotThis(subset : pd.DataFrame, ax, **kwargs):
     # unpack all the kwargs in thei respective 
     # dicts, you cannot use axArgs in plt.plot()
     pltKeys = ['alpha']
-    axKeys = ['xlim', 'ylim', 'xlabel', 'ylabel']
+    axKeys = ['xlim', 'ylim', 'xlabel', 'ylabel', 'title']
     pltArgs = getValidKwargs(kwargs, pltKeys)
     axArgs = getValidKwargs(kwargs, axKeys)
     
     for mylabel in ['peak_mV', 'noise_mV']:
-            
             # handle non existing cols and nan values
             if mylabel not in subset.columns:
                     continue
             if subset[mylabel].isnull().values.any():
                     continue
            
-            # errors? errorbar, standard plot otherwise
-            if 'sigma_' + mylabel in subset.columns:  
+            # errors? errorbar, standard plot otherwise      
+            if 'sigma_' + mylabel in subset.columns: 
+                
                 if not subset['sigma_' + mylabel].isnull().values.any():
                     ax.errorbar(subset['frequency_GHz'], subset[mylabel], 
                                 yerr = subset['sigma_' + mylabel],
@@ -57,7 +57,7 @@ def plotThis(subset : pd.DataFrame, ax, **kwargs):
                     # addidtional kwargs passed?
                     # filter kwargs to pass only valid ones to ax.set
                     ax.set(**axArgs)
-                    return
+                    continue
                         
             ax.plot(subset['frequency_GHz'], 
                     subset[mylabel],
@@ -75,6 +75,7 @@ def plotByID(subset : pd.DataFrame, title : str  = 'GraphTitle'):
                 Draws the entire dataframe grouping measurements by id.
                 The result is a graph with one line per measurement run.
         '''
+        
         fig, ax = plt.subplots()
         subset.groupby(subset['id']).apply(plotThis, ax)
 
@@ -84,7 +85,7 @@ def plotByID(subset : pd.DataFrame, title : str  = 'GraphTitle'):
         ax.set_ylabel('Tension (mV)')
         ax.legend()
 
-def correctGain(subset : pd.DataFrame, coeff : np.ndarray):
+def correctGainPipe(subset : pd.DataFrame, coeff : np.ndarray):
     '''
         Scales every relevant field by the polinomial specyfied by the 
         coeff

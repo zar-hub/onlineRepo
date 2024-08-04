@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import scipy as sp
-import inspect
+import scipy
+import scipy.signal 
 
 # a container for keys
 class k:
@@ -45,14 +45,20 @@ def plotThis(subset : pd.DataFrame, ax, **kwargs):
                     continue
             if subset[mylabel].isnull().values.any():
                     continue
+            
+            c = None
+            if mylabel == 'noise_mV':
+                # Get the color of the last line
+                c = ax.get_lines()[-1].get_color()
+
            
             # errors? errorbar, standard plot otherwise      
             if 'sigma_' + mylabel in subset.columns: 
-                
                 if not subset['sigma_' + mylabel].isnull().values.any():
                     ax.errorbar(subset['frequency_GHz'], subset[mylabel], 
                                 yerr = subset['sigma_' + mylabel],
                                 label = ' '.join([label_root , mylabel]),
+                                color = c,
                                 **pltArgs)
                     # addidtional kwargs passed?
                     # filter kwargs to pass only valid ones to ax.set
@@ -62,6 +68,7 @@ def plotThis(subset : pd.DataFrame, ax, **kwargs):
             ax.plot(subset['frequency_GHz'], 
                     subset[mylabel],
                     label = ' '.join([label_root , mylabel]),
+                    color = c,
                     **pltArgs)
                    
             
@@ -136,6 +143,7 @@ def resampleGroup(group : {pd.DataFrame, dict}, newlen : int,  columns : list = 
             # resample every relevant column
             newgroup[c] = sp.signal.resample(group[c], newlen)
         
+        # also resample the frequencies
         newgroup[k.freq] = np.linspace( group[k.freq].min(),
                                         group[k.freq].max(),
                                         newlen)
@@ -194,6 +202,22 @@ def FFTFilter(fft_signal: np.ndarray, percAmp: float, highPass: int):
     for i in range(mid - highPass , mid + highPass): 
         fft_signal[i] = 0
     return fft_signal
+
+def savgovFilterPipe(data: pd.DataFrame, window_lenght: int, polyorder: int):
+    # create a data structure to hold the processed signals
+    processed_signals = {}
+    
+    for name, group in data.groupby('id'):
+        processed_signals[name] = scipy.signal.savgol_filter(group[k.pek], window_lenght, polyorder)
+        
+    def updateDF(df, values):
+        id = df['id'][0]
+        df[k.pek] = values[id]
+        return df
+    
+    data = data.groupby('id').apply(updateDF, processed_signals)     
+    # drop error column and additional index left over from groupby
+    return data.drop(k.sig_pek, axis=1).droplevel(0)
 
 def FFTFilterPipe(data: pd.DataFrame, percAmp: float, highPass: int, plotFFT = False):
     '''
@@ -310,6 +334,12 @@ def weightmean(df : pd.DataFrame, weights : {list, np.ndarray}):
  
         return y, yerr
     
+def negcorr(weights, dataset):
+    # here the dataset is fixed while the 
+    # weights can change
+    model = weightmean(dataset, weights)
+    return -np.square(corrModelToData(dataset, model)).sum()
+
 def corrModelToData(dataset : pd.DataFrame, model : {tuple, list}):
     '''
     returns the last row of the correlation matrix between the model 

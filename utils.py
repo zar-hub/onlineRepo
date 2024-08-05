@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import scipy
+import scipy.optimize
 import scipy.signal 
 
 # a container for keys
@@ -16,11 +17,11 @@ def genLabel(df):
     '''
         Generates the label for calibration_effects
     '''
-    # if the id is not present do not show it
-    try:
+    if('id'  in df.columns):
         return ' '.join([str(df['id'].iloc[0]), str(df['sample'].iloc[0]),  str(df['antenna'].iloc[0])] )
-    except:
-        return ' '.join([str(df['sample'].iloc[0]),  str(df['antenna'].iloc[0])] )
+    if('process'  in df.columns):
+        return ' '.join([str(df['sample'].iloc[0]), str(df['process'].iloc[0]), str(df['antenna'].iloc[0])] )
+    return ' '.join([str(df['sample'].iloc[0]),  str(df['antenna'].iloc[0])] )
          
 def getValidKwargs(mykwargs, mylist):
     return {k: v for k, v in mykwargs.items() if k in mylist}
@@ -241,7 +242,9 @@ def savgovFilterPipe(data: pd.DataFrame, window_lenght: int, polyorder: int):
     
     data = data.groupby('id').apply(updateDF, processed_signals)     
     # drop error column and additional index left over from groupby
-    return data.drop(k.sig_pek, axis=1).droplevel(0)
+    if k.sig_pek in data.columns:
+        return data.drop(k.sig_pek, axis=1).droplevel(0)
+    return data.droplevel(0)
 
 def FFTFilterPipe(data: pd.DataFrame, percAmp: float, highPass: int, plotFFT = False):
     '''
@@ -373,6 +376,41 @@ def corrModelToData(dataset : pd.DataFrame, model : {tuple, list}):
     data = np.stack(dataset.groupby('id').apply(lambda x : (x[k.pek].values)))
     data = np.append(data, [model[0]], axis=0)
     return np.corrcoef(data)[-1, :]
+
+def processPipe(dataset : pd.DataFrame, by='id', proc_name ='raw'):
+    '''
+    Returns a dataset when the model WEIGHTMEAN is appyed to the data,
+    some standard output is performed.
+    '''
+    processed_data = pd.DataFrame()
+    for group_name, group in dataset.groupby(by):
+        # make the data homogeneous
+        group = resamplePipe(group)
+
+        # how many id do we get?
+        samples = len(group['id'].unique())
+        print(f'fitting group {group_name} with {samples} samples')
+        
+        # create an array of weights that sum to one
+        # and minimize the model
+        weights = np.array([1] * samples) / samples
+        res = scipy.optimize.minimize(negcorr, weights, group)
+        np.set_printoptions(precision=3)
+        print('minimization status: ', res['message'])
+        print('nomal minimization weights: ', res['x'])
+        print('correlation with the data: ', corrModelToData(group, weightmean(group, res['x'])))
+        
+        # save the results
+        newgroup = pd.DataFrame({
+            'sample' : group['sample'].iloc[0],
+            'process' : proc_name,
+            'antenna' : group['antenna'].iloc[0],
+            k.freq : getResampledFreq(group),
+            k.pek   : weightmean(group, res['x'])[0],
+            k.sig_pek : weightmean(group, res['x'])[1]
+            })
+        processed_data = pd.concat([processed_data, newgroup])
+    return processed_data
 
 if __name__ == 'main':
     pass

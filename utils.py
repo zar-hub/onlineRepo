@@ -367,22 +367,27 @@ def negcorr(weights, dataset):
     model = weightmean(dataset, weights)
     return -np.square(corrModelToData(dataset, model)).sum()
 
-def corrModelToData(dataset : pd.DataFrame, model : {tuple, list}):
+def corrModelToData(dataset : pd.DataFrame, model : {tuple, list, pd.DataFrame}):
     '''
     returns the last row of the correlation matrix between the model 
     and the data, each element is the correlation between the model
     and a specific run of the data.
     '''
+    # get only the pek values in a np format
     data = np.stack(dataset.groupby('id').apply(lambda x : (x[k.pek].values)))
-    data = np.append(data, [model[0]], axis=0)
+    if isinstance(model, (list, tuple)):
+        data = np.append(data, [model[0]], axis=0)
+    if isinstance(model, pd.DataFrame):
+        data = np.append(data, [model[k.pek]], axis=0)
     return np.corrcoef(data)[-1, :]
 
-def processPipe(dataset : pd.DataFrame, by='id', proc_name ='raw'):
+def processPipe(dataset : pd.DataFrame, by='antenna', proc_name ='raw'):
     '''
     Returns a dataset when the model WEIGHTMEAN is appyed to the data,
     some standard output is performed.
     '''
     processed_data = pd.DataFrame()
+    correlations = {}
     for group_name, group in dataset.groupby(by):
         # make the data homogeneous
         group = resamplePipe(group)
@@ -409,6 +414,8 @@ def processPipe(dataset : pd.DataFrame, by='id', proc_name ='raw'):
             k.pek   : weightmean(group, res['x'])[0],
             k.sig_pek : weightmean(group, res['x'])[1]
             })
+        
+        correlations[group_name] = corrModelToData(group, weightmean(group, res['x']))[:-1]
         processed_data = pd.concat([processed_data, newgroup])
     return processed_data
 

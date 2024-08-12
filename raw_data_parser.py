@@ -23,7 +23,7 @@
                                         AIR
                                         CAL: calibration, the reciever is
                                         directly connected with the antenna
-        - antenna       string          can be HF, LF, CAB
+        - antenna       string          can be HF, LF, CAB, 5.8
                                         both lowFreq and highFreq are homemade  
 
     Notes:
